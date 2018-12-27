@@ -63,7 +63,7 @@ executable codex
     , directory
     , filepath
     , hackage-db
-    , network             >= 2.6        && < 2.7
+    , network
     , process
     , transformers
     , wreq
