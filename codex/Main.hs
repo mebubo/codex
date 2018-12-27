@@ -19,7 +19,6 @@ import Distribution.Text
 import Network.Socket (withSocketsDo)
 import Network.Wreq.Session (withSession)
 import Paths_codex (version)
-import System.Console.AsciiProgress (displayConsoleRegions)
 import System.Directory
 import System.Environment
 import System.Exit
@@ -42,12 +41,8 @@ retrying n x = retrying' n $ fmap (left (:[])) x where
     Left ls -> fmap (left (++ ls)) x'
     Right r -> return $ Right r
 
-hashFile :: Codex -> FilePath
-hashFile cx = hackagePath cx </> "codex.hash"
-
 cleanCache :: (Builder, Codex) -> IO ()
 cleanCache (bldr, cx) = do
-  -- TODO Delete hash file!
   xs <- listDirectory hp
   ys <- builderOp bldr =<< traverseDirectories xs
   _  <- removeTagFiles $ concat ys
@@ -63,35 +58,15 @@ cleanCache (bldr, cx) = do
     builderOp (Stack _) = traverseDirectories . concat
     builderOp Cabal = return
 
-readCacheHash :: Codex -> IO (Maybe String)
-readCacheHash cx = do
-  fileExist <- doesFileExist $ hashFile cx
-  if not fileExist then return Nothing else do
-    content <- readFile $ hashFile cx
-    return $ Just content
-
-writeCacheHash :: Codex -> String -> IO ()
-writeCacheHash cx = writeFile $ hashFile cx
-
 update :: Bool -> Codex -> Builder -> IO ()
-update force cx bldr = displayConsoleRegions $ do
-#if MIN_VERSION_hackage_db(2,0,0)
+update force cx bldr = do
   (mpid, dependencies, workspaceProjects') <- case bldr of
        Cabal -> do
          tb <- DB.hackageTarball
          resolveCurrentProjectDependencies bldr tb
        Stack _ -> resolveCurrentProjectDependencies bldr $ hackagePath cx
-#else
-  (mpid, dependencies, workspaceProjects') <-
-    resolveCurrentProjectDependencies bldr (hackagePath cx)
-#endif
-  projectHash <- computeCurrentProjectHash cx
-  shouldUpdate <-
-    if null workspaceProjects' then
-      either (const True) id <$> (runExceptT $ isUpdateRequired cx dependencies projectHash)
-    else return True
 
-  if force || shouldUpdate then do
+  if force || True then do
     let workspaceProjects = if currentProjectIncluded cx
           then workspaceProjects'
           else filter (("." /=) . workspaceProjectPath) workspaceProjects'
@@ -99,10 +74,9 @@ update force cx bldr = displayConsoleRegions $ do
     when fileExist $ removeFile tagsFile
     putStrLn ("Updating: " ++ displayPackages mpid workspaceProjects)
     results <- withSession $ \s -> do
-      tick' <- newProgressBar' "Loading tags" (length dependencies)
-      traverse (retrying 3 . runExceptT . getTags tick' s) dependencies
+      traverse (retrying 3 . runExceptT . getTags s) dependencies
     _       <- traverse print . concat $ lefts results
-    res     <- runExceptT $ assembly bldr cx dependencies projectHash workspaceProjects tagsFile
+    res     <- runExceptT $ assembly bldr cx dependencies workspaceProjects tagsFile
     case res of
       Left e -> do
         print e
@@ -113,11 +87,11 @@ update force cx bldr = displayConsoleRegions $ do
   where
     tagsFile = tagsFileName cx
     hp = hackagePathOf bldr cx
-    getTags tick' s i = status hp i >>= \x -> case x of
-      Source Tagged   -> tick' >> return ()
-      Source Untagged -> tags bldr cx i >> tick' >> getTags tick' s i
-      Archive         -> extract hp i >> tick' >> getTags tick' s i
-      Remote          -> liftIO $ either ignore return <=< runExceptT $ fetch s hp i >> tick' >> getTags tick' s i
+    getTags s i = status hp i >>= \x -> case x of
+      Source Tagged   -> log' "Already tagged: " i >> return ()
+      Source Untagged -> tags bldr cx i >> log' "Tagged " i >> getTags s i
+      Archive         -> extract hp i >> log' "Unpacked " i >> getTags s i
+      Remote          -> liftIO $ either ignore return <=< runExceptT $ fetch s hp i >> log' "Downloaded " i >> getTags s i
         where
           ignore msg = do
             putStrLn $ concat ["codex: *warning* unable to fetch an archive for ", display i]
@@ -184,15 +158,8 @@ main = withSocketsDo $ do
 
     withConfig cx' f = do
       (bldr, cx) <- toBuilderConfig cx'
-      cacheHash' <- readCacheHash cx
-      case cacheHash' of
-        Just cacheHash ->
-            when (cacheHash /= codexHash cx) $ do
-            putStrLn "codex: configuration has been updated, cleaning cache ..."
-            cleanCache (bldr, cx)
-        Nothing -> return ()
+      cleanCache (bldr, cx)
       res <- f cx bldr
-      writeCacheHash cx $ codexHash cx
       return res
 
     fail' msg = do

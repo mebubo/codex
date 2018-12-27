@@ -8,10 +8,6 @@ import System.FilePath
 
 import Codex
 
-import qualified Main.Config.Codex0 as C0
-import qualified Main.Config.Codex1 as C1
-import qualified Main.Config.Codex2 as C2
-import qualified Main.Config.Codex3 as C3
 import qualified Distribution.Hackage.DB as DB
 
 #if MIN_VERSION_hackage_db(2,0,0)
@@ -61,45 +57,9 @@ encodeConfig cx = do
 decodeConfig :: IO (Maybe Codex)
 decodeConfig = do
   path  <- getConfigPath
-  cfg   <- config path
-  case cfg of
-    Nothing   -> do
-      cfg3 <- config3 path
-      case cfg3 of
-        Nothing -> do
-          cfg2 <- config2 path
-          case cfg2 of
-            Nothing -> do
-              cfg1 <- config1 path
-              case cfg1 of
-                Nothing -> config0 path
-                cfg1'   -> return cfg1'
-            cfg2' -> return cfg2'
-        cfg3' -> return cfg3'
-    cfg'      -> return cfg'
+  config path
   where
-    warn :: IO () -> IO ()
-    warn migrateWarn = do
-      putStrLn "codex: *warning* your configuration has been migrated automatically!\n"
-      migrateWarn
-      putStrLn ""
-    config  = configOf
-    config0 = reencodeConfigOf C0.migrate C0.migrateWarn
-    config1 = reencodeConfigOf C1.migrate C1.migrateWarn
-    config2 = reencodeConfigOf C2.migrate C2.migrateWarn
-    config3 = reencodeConfigOf C3.migrate C3.migrateWarn
-
-    reencodeConfigOf migrate migrateWarn path = do
-      rawCfg <- configOf path
-      let cfg = fmap migrate rawCfg
-      case cfg of
-        Nothing   -> return ()
-        Just cfg' -> do
-          encodeConfig cfg'
-          warn migrateWarn
-      return cfg
-
-    configOf path = do
+    config path = do
       res <- decodeFileEither path
       return $ eitherToMaybe res
 
