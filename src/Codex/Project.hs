@@ -26,8 +26,6 @@ import qualified Data.Map as Map
 
 import Codex.Internal (Builder(..), stackListDependencies)
 
-type Hackage = HackageDB
-
 newtype Workspace = Workspace [WorkspaceProject]
   deriving (Eq, Show)
 
@@ -135,7 +133,7 @@ resolveInstalledDependencies bldr root pd = try $ do
 allComponentsInBuildOrder' :: LocalBuildInfo -> [ComponentLocalBuildInfo]
 allComponentsInBuildOrder' = allComponentsInBuildOrder
 
-resolveHackageDependencies :: Hackage -> GenericPackageDescription -> [GenericPackageDescription]
+resolveHackageDependencies :: HackageDB -> GenericPackageDescription -> [GenericPackageDescription]
 resolveHackageDependencies db pd = maybeToList . resolveDependency db =<< allDependencies pd where
   resolveDependency _ (Dependency name versionRange) = do
     pdsByVersion <- lookupName name
