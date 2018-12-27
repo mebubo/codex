@@ -30,21 +30,9 @@ loadConfig :: IO Codex
 loadConfig = decodeConfig >>= maybe defaultConfig return where
   defaultConfig = do
     hp <- DB.hackageTarball
-      `catch` \Errors.NoHackageTarballFound -> do
-        error $ unlines
-          [ "couldn't find a Hackage tarball. This can happen if you use `stack` exclusively,"
-          , "or just haven't run `cabal update` yet. To fix it, try running:"
-          , ""
-          , "    cabal update"
-          ]
-    let cx = Codex True (dropFileName hp) defaultStackOpts (taggerCmd Hasktags) True True defaultTagsFileName
-    encodeConfig cx
+      `catch` \Errors.NoHackageTarballFound -> error "Couldn't find a Hackage tarball"
+    let cx = Codex True (dropFileName hp) defaultStackOpts (taggerCmd Hasktags) True defaultTagsFileName
     return cx
-
-encodeConfig :: Codex -> IO ()
-encodeConfig cx = do
-  path <- getConfigPath
-  encodeFile path cx
 
 decodeConfig :: IO (Maybe Codex)
 decodeConfig = do
@@ -54,6 +42,5 @@ decodeConfig = do
     config path = do
       res <- decodeFileEither path
       return $ eitherToMaybe res
-
     eitherToMaybe x = either (const Nothing) Just x
 

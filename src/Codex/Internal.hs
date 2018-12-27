@@ -28,7 +28,6 @@ data Codex = Codex
   , hackagePath :: FilePath
   , stackOpts :: String
   , tagsCmd :: String
-  , tagsFileHeader :: Bool
   , tagsFileSorted :: Bool
   , tagsFileName :: FilePath }
     deriving Show

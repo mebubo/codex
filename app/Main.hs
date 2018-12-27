@@ -23,10 +23,6 @@ import Codex.Project
 import Codex.Internal (Builder(..), hackagePathOf, readStackPath)
 import Main.Config
 
--- TODO Add 'cache dump' to dump all tags in stdout (usecase: pipe to grep)
--- TODO Use a mergesort algorithm for `assembly`
--- TODO Better error handling and fine grained retry
-
 retrying :: Int -> IO (Either a b) -> IO (Either [a] b)
 retrying n x = retrying' n $ fmap (left (:[])) x where
   retrying' 0  x' = x'
@@ -36,47 +32,44 @@ retrying n x = retrying' n $ fmap (left (:[])) x where
 
 cleanCache :: (Builder, Codex) -> IO ()
 cleanCache (bldr, cx) = do
-  xs <- listDirectory hp
+  xs <- listDirectory' hp
   ys <- builderOp bldr =<< traverseDirectories xs
   _  <- removeTagFiles $ concat ys
   return ()
   where
     hp = hackagePath cx
     safe = (try :: IO a -> IO (Either SomeException a))
-    listDirectory fp = do
+    listDirectory' fp = do
       xs <- getDirectoryContents fp
       return . fmap (fp </>) $ filter (not . isPrefixOf ".") xs
-    removeTagFiles = traverse (safe . removeFile) . fmap (</> "tags")
-    traverseDirectories = fmap rights . traverse (safe . listDirectory)
+    removeTagFiles = traverse (\a -> ((safe . removeFile) a >> log' "Removing " a)) . fmap (</> "tags")
+    traverseDirectories = fmap rights . traverse (safe . listDirectory')
     builderOp (Stack _) = traverseDirectories . concat
     builderOp Cabal = return
 
-update :: Bool -> Codex -> Builder -> IO ()
-update force cx bldr = do
+update :: Codex -> Builder -> IO ()
+update cx bldr = do
   (mpid, dependencies, workspaceProjects') <- case bldr of
        Cabal -> do
          tb <- DB.hackageTarball
          resolveCurrentProjectDependencies bldr tb
        Stack _ -> resolveCurrentProjectDependencies bldr $ hackagePath cx
 
-  if force || True then do
-    let workspaceProjects = if currentProjectIncluded cx
-          then workspaceProjects'
-          else filter (("." /=) . workspaceProjectPath) workspaceProjects'
-    fileExist <- doesFileExist tagsFile
-    when fileExist $ removeFile tagsFile
-    putStrLn ("Updating: " ++ displayPackages mpid workspaceProjects)
-    results <- withSession $ \s -> do
-      traverse (retrying 3 . runExceptT . getTags s) dependencies
-    _       <- traverse print . concat $ lefts results
-    res     <- runExceptT $ assembly bldr cx dependencies workspaceProjects tagsFile
-    case res of
-      Left e -> do
-        print e
-        exitFailure
-      Right _ -> pure ()
-  else
-    putStrLn "Nothing to update."
+  let workspaceProjects = if currentProjectIncluded cx
+        then workspaceProjects'
+        else filter (("." /=) . workspaceProjectPath) workspaceProjects'
+  fileExist <- doesFileExist tagsFile
+  when fileExist $ removeFile tagsFile
+  putStrLn ("Updating: " ++ displayPackages mpid workspaceProjects)
+  results <- withSession $ \s -> do
+    traverse (retrying 3 . runExceptT . getTags s) dependencies
+  _       <- traverse print . concat $ lefts results
+  res     <- runExceptT $ assembly bldr cx dependencies workspaceProjects tagsFile
+  case res of
+    Left e -> do
+      print e
+      exitFailure
+    Right _ -> pure ()
   where
     tagsFile = tagsFileName cx
     hp = hackagePathOf bldr cx
@@ -103,12 +96,7 @@ help = putStrLn $
           , "             [--version]"
           , ""
           , " update                Synchronize the tags file in the current cabal project directory"
-          , " update --force        Discard tags file hash and force regeneration"
           , " cache clean           Remove all `tags` file from the local hackage cache]"
-          , " set tagger <tagger>   Update the `~/.codex` configuration file for the given tagger (hasktags|ctags)."
-          , " set format <format>   Update the `~/.codex` configuration file for the given format (vim|emacs|sublime)."
-          , ""
-          , "By default `hasktags` will be used, and need to be in the `PATH`, the tagger command can be fully customized in `~/.codex`."
           , ""
           , "Note: codex will browse the parent directory for cabal projects and use them as dependency over hackage when possible." ]
 
@@ -118,13 +106,7 @@ main = withSocketsDo $ do
   args  <- getArgs
   run cx args where
     run cx ["cache", "clean"] = toBuilderConfig cx >>= cleanCache
-    run cx ["update"]             = withConfig cx (update False)
-    run cx ["update", "--force"]  = withConfig cx (update True)
-    run cx ["set", "tagger", "ctags"]     = encodeConfig $ cx { tagsCmd = taggerCmd Ctags }
-    run cx ["set", "tagger", "hasktags"]  = encodeConfig $ cx { tagsCmd = taggerCmd Hasktags }
-    run cx ["set", "format", "emacs"]     = encodeConfig $ cx { tagsCmd = taggerCmd HasktagsEmacs, tagsFileHeader = False, tagsFileSorted = False, tagsFileName = "TAGS" }
-    run cx ["set", "format", "sublime"]   = encodeConfig $ cx { tagsCmd = taggerCmd HasktagsExtended, tagsFileHeader = True, tagsFileSorted = True }
-    run cx ["set", "format", "vim"]       = encodeConfig $ cx { tagsFileHeader = True, tagsFileSorted = True }
+    run cx ["update"]             = withConfig cx update
     run _  ["--version"] = putStrLn $ concat ["codex: ", display version]
     run _  ["--help"] = help
     run _  []         = help
