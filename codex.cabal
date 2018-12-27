@@ -30,7 +30,6 @@ library
     Codex
     Codex.Project
     Codex.Internal
-    Distribution.Sandbox.Utils
   build-depends:
       base                >= 4.8.2.0    && < 5
     , bytestring          >= 0.10.0.2   && < 0.11

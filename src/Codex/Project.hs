@@ -12,7 +12,6 @@ import Distribution.Hackage.DB (HackageDB, cabalFile, readTarball)
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Parsec
-import Distribution.Sandbox.Utils (findSandbox)
 import Distribution.Simple.Configure
 import Distribution.Simple.LocalBuildInfo
 import Distribution.Simple.PackageIndex
@@ -21,7 +20,6 @@ import Distribution.Version
 import System.Directory
 import System.Environment (lookupEnv)
 import System.FilePath
-import Text.Read (readMaybe)
 
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -107,9 +105,8 @@ resolveProjectDependencies :: Builder -> Workspace -> FilePath -> FilePath -> IO
 resolveProjectDependencies bldr ws hackagePath root = do
   pd <- maybe (error "No cabal file found.") id <$> findPackageDescription root
   xs <- resolvePackageDependencies bldr hackagePath root pd
-  ys <- resolveSandboxDependencies root
   let zs   = resolveWorkspaceDependencies ws pd
-  let wsds = List.filter (shouldOverride xs) $ List.nubBy (on (==) prjId) $ concat [ys, zs]
+  let wsds = List.filter (shouldOverride xs) $ List.nubBy (on (==) prjId) zs
   let pjds = List.filter (\x -> (((unPackageName . pkgName) x) /= "rts") && (List.notElem (pkgName x) $ fmap prjId wsds)) xs
   return (Just (identifier pd), pjds, wsds)
   where
@@ -162,24 +159,6 @@ resolvePackageDependencies bldr hackagePath root pd = do
       db <- readTarball Nothing (hackagePath </> "00-index.tar")
         <|> readTarball Nothing (hackagePath </> "01-index.tar")
       return $ identifier <$> resolveHackageDependencies db pd
-
-resolveSandboxDependencies :: FilePath -> IO [WorkspaceProject]
-resolveSandboxDependencies root =
-  findSandbox root >>= maybe (return []) continue
- where
-  continue cabalSandboxFolder = do
-    fileExists  <- doesFileExist sourcesFile
-    if fileExists then readSources else return []
-   where
-    sourcesFile = root </> cabalSandboxFolder </> "add-source-timestamps"
-    readSources = do
-      fileContent <- readFile sourcesFile
-      xs <- traverse readWorkspaceProject $ projects fileContent
-      return $ xs >>= maybeToList where
-        projects :: String -> [FilePath]
-        projects x = sources x >>= (\x' -> fst <$> snd x')
-        sources :: String -> [(String, [(FilePath, Int)])]
-        sources x = fromMaybe [] (readMaybe x)
 
 resolveWorkspaceDependencies :: Workspace -> GenericPackageDescription -> [WorkspaceProject]
 resolveWorkspaceDependencies (Workspace ws) pd = maybeToList . resolveDependency =<< allDependencies pd where
