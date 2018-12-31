@@ -18,8 +18,8 @@ import System.Exit
 import System.FilePath
 import System.Process (shell, readCreateProcessWithExitCode)
 
-import Codex
-import Codex.Project
+import Codex (Codex, Status(..), Tagging(..), hackagePath, log', currentProjectIncluded, status, tags, tagsFileName, assembly, extract, fetch, stackOpts)
+import Codex.Project (resolveCurrentProjectDependencies, workspaceProjectPath, workspaceProjectIdentifier)
 import Codex.Internal (Builder(..), hackagePathOf, readStackPath)
 import Main.Config
 

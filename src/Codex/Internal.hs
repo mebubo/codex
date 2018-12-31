@@ -78,34 +78,11 @@ readStackPath opts id' = do
 
 stackListDependencies :: String -> String -> IO [PackageIdentifier]
 stackListDependencies opts pname = do
-  version <- readStackVersion
-  let
-    cmd =
-      case versionBranch version of
-        a : b : _
-          | a <= 1
-          , b <= 7
-          -> concat ["stack ", opts, " list-dependencies", pname]
-        _
-          -> concat ["stack ", opts, " ls dependencies ", pname]
   s <- readCreateProcess (shell cmd) ""
   return $ mapMaybe parsePackageIdentifier $ lines s
   where
+    cmd = concat ["stack ", opts, " ls dependencies ", pname]
     parsePackageIdentifier line =
       let line' = map (\c -> if c == ' ' then '-' else c)
                       line
        in  simpleParse line'
-
-readStackVersion :: IO Version
-readStackVersion = do
-  s <- readCreateProcess (shell "stack --version") ""
-  let
-    versionText =
-      takeWhile (/= ',') (drop (length "Version ") s)
-    parsed =
-      readP_to_S parseVersion versionText
-  case parsed of
-    (v, _) : _ ->
-      pure v
-    _ ->
-      error $ "Failed to parse stack version. Output: " ++ s

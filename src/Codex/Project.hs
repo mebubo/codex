@@ -48,9 +48,7 @@ allDependencies pd = List.filter (not . isCurrent) $ concat [lds, eds, tds, bds]
 findPackageDescription :: FilePath -> IO (Maybe GenericPackageDescription)
 findPackageDescription root = do
   mpath <- findCabalFilePath root
-  traverse (
-    readGenericPackageDescription
-    silent) mpath
+  traverse (readGenericPackageDescription silent) mpath
 
 -- | Find a regular file ending with ".cabal" within a directory.
 findCabalFilePath :: FilePath -> IO (Maybe FilePath)
@@ -98,7 +96,6 @@ resolveLocalDependencies bldr hackagePath wps = do
     mergeDependencies (_, pids, _) pids' =
       pids `union` pids'
 
--- TODO Optimize
 resolveProjectDependencies :: Builder -> Workspace -> FilePath -> FilePath -> IO ProjectDependencies
 resolveProjectDependencies bldr ws hackagePath root = do
   pd <- maybe (error "No cabal file found.") id <$> findPackageDescription root
