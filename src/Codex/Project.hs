@@ -20,6 +20,7 @@ import Distribution.Version
 import System.Directory
 import System.Environment (lookupEnv)
 import System.FilePath
+import Debug.Trace
 
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -66,13 +67,16 @@ findCabalFilePath path = do
 resolveCurrentProjectDependencies :: Builder -> FilePath -> IO ProjectDependencies
 resolveCurrentProjectDependencies bldr hackagePath = do
   mps <- localPackages
+  traceIO $ show mps
   case mps of
     Just ps -> resolveLocalDependencies bldr hackagePath ps
     Nothing -> do
       disableImplicitWorkspace <- isJust <$> lookupEnv "CODEX_DISABLE_WORKSPACE"
+      traceIO $ show disableImplicitWorkspace
       ws <- if disableImplicitWorkspace
         then pure (Workspace [])
         else getWorkspace ".."
+      traceIO $ show ws
       resolveProjectDependencies bldr ws hackagePath "."
   where
     localPackages = do
